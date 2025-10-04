@@ -1,37 +1,34 @@
-import time
-import socket
+import base64
 import json
 import os.path
-import base64
+import socket
+import time
 import uuid
 
-from mcdreforged.api.all import *
-from .byte_utils import *
 import online_player_api as lib_online_player
+from mcdreforged.api.all import *
 
+from .byte_utils import *
+from .config import Config
 
 
 class FakeServerSocket:
-    def __init__(self, server: PluginServerInterface):
+    def __init__(self, server: PluginServerInterface, config: Config):
         time.sleep(2)
-        with open("config/HibernateR.json", "r") as file:
-            config = json.load(file)
-        self.fs_ip = config["ip"]
-        self.fs_port = config["port"]
-        self.fs_samples = config["samples"]
-        self.fs_motd = config["motd"]["1"] + "\n" + config["motd"]["2"]
-        self.fs_icon = None
-        self.fs_kick_message = ""
+
+        self.fs_ip = config.ip
+        self.fs_port = config.port
+        self.fs_samples = config.samples
+        self.fs_motd = '\n'.join(config.motd)
+        self.fs_kick_message = "\n".join(config.kick_message)
         self.server_socket = None
         self.close_request = False
 
-        for message in config["kick_message"]:
-            self.fs_kick_message += message + "\n"
-
-        if not os.path.exists(config["server_icon"]):
+        if not os.path.exists(config.server_icon):
             server.logger.warning("未找到服务器图标，设置为None")
+            self.fs_icon = None
         else:
-            with open(config["server_icon"], 'rb') as image:
+            with open(config.server_icon, 'rb') as image:
                 self.fs_icon = "data:image/png;base64," + base64.b64encode(image.read()).decode()
 
         server.logger.info("伪装服务器初始化完成")
@@ -39,7 +36,7 @@ class FakeServerSocket:
     @new_thread
     def start(self, server: PluginServerInterface, start_server):
 
-        #检查服务器是否在运行
+        # 检查服务器是否在运行
         if server.is_server_running() or server.is_server_startup():
             server.logger.info("服务器正在运行,请勿启动伪装服务器!")
             return
@@ -50,7 +47,7 @@ class FakeServerSocket:
             if self.server_socket and self.server_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN):
                 server.logger.info("伪装服务器正在运行")
                 return
-        except Exception as e:
+        except Exception:  # 是防止报错阻挡运行嘛，如果没有报错请删掉 try-except
             pass
 
         result = None
@@ -59,13 +56,13 @@ class FakeServerSocket:
             retry_count = 0
             max_retries = 5
             retry_delay = 1
-            #FS创建部分
+            # FS创建部分
             while retry_count < max_retries and not self.close_request:
                 try:
                     self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    #server.logger.info(f"伪装服务器正在setsockopt")
+                    server.logger.debug(f"伪装服务器正在setsockopt")
                     self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-                    #server.logger.info(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
+                    server.logger.debug(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
                     self.server_socket.bind((self.fs_ip, self.fs_port))
                     self.server_socket.settimeout(10)
                     break
@@ -84,7 +81,7 @@ class FakeServerSocket:
                 break
 
             try:
-                #server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
+                server.logger.debug(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.listen(5)
                 while result != "connection_request" and not self.close_request:
                     client_socket, client_address = self.server_socket.accept()
@@ -120,35 +117,36 @@ class FakeServerSocket:
         if self.close_request:
             self.close_request = False
 
-
     def handle_ping(self, client_socket, recv_data, i, server: PluginServerInterface):
         (version, i) = read_varint(recv_data, i)
         (ip, i) = read_utf(recv_data, i)
         ip = ip.replace('\x00', '').replace("\r", "\\r").replace("\t", "\\t").replace("\n", "\\n")
-        is_using_fml = False
         if ip.endswith("FML"):
-            is_using_fml = True
             ip = ip[:-3]
         (port, i) = read_ushort(recv_data, i)
         (state, i) = read_varint(recv_data, i)
         if state == 1:
-            server.logger.info("伪装服务器收到了一次ping: %s" % (recv_data))
+            server.logger.info("伪装服务器收到了一次ping: %s" % recv_data)
             motd = {
                 "version": {"name": "Sleeping", "protocol": 2},
-                "players": {"max": 10, "online": 10, "sample": [{"name": sample, "id": str(uuid.uuid4())} for sample in self.fs_samples]},
+                "players": {"max": 10, "online": 10,
+                            "sample": [{"name": sample, "id": str(uuid.uuid4())} for sample in self.fs_samples]},
                 "description": {"text": self.fs_motd}
             }
-            if self.fs_icon and len(self.fs_icon) > 0:
-                motd["favicon"] = self.fs_icon
+            if self.fs_icon:
+                motd["favicon"] = self.fs_icon  # type: ignore
             write_response(client_socket, json.dumps(motd))
             return "ping_received"
         elif state == 2:
-            server.logger.info("伪装服务器收到了一次连接请求: %s" % (recv_data))
+            server.logger.info("伪装服务器收到了一次连接请求: %s" % recv_data)
             write_response(client_socket, json.dumps({"text": self.fs_kick_message}))
             self.stop(server)
             server.logger.info("启动服务器")
-            #server.start()
+            # server.start()
             return "connection_request"
+        # 还有没有其他的可能？
+        # 如果没有 推荐在这里加 assert
+        # assert False
 
     def handle_pong(self, client_socket, recv_data, i, server: PluginServerInterface):
         (long, i) = read_long(recv_data, i)
@@ -158,7 +156,6 @@ class FakeServerSocket:
         response.append(long)
         client_socket.sendall(bytearray)
         server.logger.info("Responded with pong packet.")
-
 
     def stop(self, server: PluginServerInterface):
         self.close_request = True

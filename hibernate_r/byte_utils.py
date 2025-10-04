@@ -47,6 +47,7 @@ def write_utf(byte, value):
     for b in value.encode():
         byte.append(b)
 
+
 def write_response(client_socket, response):
     response_array = bytearray()
     write_varint(response_array, 0)

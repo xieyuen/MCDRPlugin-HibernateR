@@ -131,3 +131,6 @@ dmypy.json
 # MCDR Plugins
 *.mcdr
 *.pyz
+
+# PyCharm
+.idea

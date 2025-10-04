@@ -10,10 +10,8 @@ from .byte_utils import *
 from .config import Config, load_config
 from .timer import TimerManager
 
-# 创建 TimerManager 实例
-timer_manager = TimerManager()
-# 创建 fake_server_socket 实例
-fake_server_socket: FakeServerSocket | None = None
+timer_manager: TimerManager
+fake_server_socket: FakeServerSocket
 # 预期的服务器状态
 wish_server_status: bool = True
 # 插件配置
@@ -22,7 +20,7 @@ config: Config
 
 # 初始化插件
 def on_load(server: PluginServerInterface, _prev_module):
-    global fake_server_socket, wish_server_status, config
+    global timer_manager, fake_server_socket, wish_server_status, config
 
     # 构建命令树
     builder = SimpleCommandBuilder()
@@ -38,6 +36,8 @@ def on_load(server: PluginServerInterface, _prev_module):
 
     # 创建 fake_server_socket 实例
     fake_server_socket = FakeServerSocket(server, config)
+    # 创建 TimerManager 实例
+    timer_manager = TimerManager(config)
 
     # 检查服务器状态并启动计时器或伪装服务器
     if server.is_server_running() or server.is_server_startup():

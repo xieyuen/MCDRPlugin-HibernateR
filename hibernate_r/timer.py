@@ -1,31 +1,33 @@
 # hibernate_r/timer.py
 
-import json
 import threading
 import time
 
 import online_player_api as lib_online_player
 from mcdreforged.api.all import *
 
+from hibernate_r.config import Config
+
 
 class TimerManager:
-    def __init__(self):
+    def __init__(self, config: Config):
         self.current_timer = None
+        self.config = config
 
     def start_timer(self, server: PluginServerInterface, stop_server):
         self.cancel_timer(server)
 
         time.sleep(2)
-        with open("config/HibernateR.json", "r") as file:
-            config = json.load(file)
-        wait_min = config["wait_min"]
-        blacklist_player = config["blacklist_player"]
+
+        wait_min = self.config.wait_min
+        blacklist_player = self.config.blacklist_player
 
         player_list = lib_online_player.get_player_list()
 
-        for player in blacklist_player:
-            if player in player_list:
-                player_list.remove(player)
+        player_list = [
+            player for player in player_list
+            if player not in blacklist_player
+        ]
 
         player_num = len(player_list)
 

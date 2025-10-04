@@ -21,7 +21,7 @@ class FakeServerSocket:
         self.fs_samples = config.samples
         self.fs_motd = '\n'.join(config.motd)
         self.fs_kick_message = "\n".join(config.kick_message)
-        self.server_socket = None
+        self.server_socket: socket.socket | None = None
         self.close_request = False
 
         if not os.path.exists(config.server_icon):
@@ -41,13 +41,14 @@ class FakeServerSocket:
             server.logger.info("服务器正在运行,请勿启动伪装服务器!")
             return
 
-        # 检查伪装服务器是否在运行
+        # 检查伪装服务器是否在运行 <=> 套接字是否已初始化且在监听
         try:
-            # 检查套接字是否已初始化且在监听
             if self.server_socket and self.server_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN):
                 server.logger.info("伪装服务器正在运行")
                 return
-        except Exception:  # 是防止报错阻挡运行嘛，如果没有报错请删掉 try-except
+        except OSError:
+            # self.server_socket 已经被关闭或无效
+            # 等价于伪装服务器未运行
             pass
 
         result = None
@@ -89,12 +90,12 @@ class FakeServerSocket:
                         server.logger.info(f"收到来自{client_address[0]}:{client_address[1]}的连接")
                         recv_data = client_socket.recv(1024)
                         client_ip = client_address[0]
-                        (length, i) = read_varint(recv_data, 0)
-                        (packetID, i) = read_varint(recv_data, i)
+                        length, i = read_varint(recv_data, 0)
+                        packet_id, i = read_varint(recv_data, i)
 
-                        if packetID == 0:
+                        if packet_id == 0:
                             result = self.handle_ping(client_socket, recv_data, i, server)
-                        elif packetID == 1:
+                        elif packet_id == 1:
                             self.handle_pong(client_socket, recv_data, i, server)
                         else:
                             server.logger.warning("收到了意外的数据包")
@@ -118,13 +119,10 @@ class FakeServerSocket:
             self.close_request = False
 
     def handle_ping(self, client_socket, recv_data, i, server: PluginServerInterface):
-        (version, i) = read_varint(recv_data, i)
-        (ip, i) = read_utf(recv_data, i)
-        ip = ip.replace('\x00', '').replace("\r", "\\r").replace("\t", "\\t").replace("\n", "\\n")
-        if ip.endswith("FML"):
-            ip = ip[:-3]
-        (port, i) = read_ushort(recv_data, i)
-        (state, i) = read_varint(recv_data, i)
+        version, i = read_varint(recv_data, i)
+        ip, i = read_utf(recv_data, i)
+        port, i = read_ushort(recv_data, i)
+        state, i = read_varint(recv_data, i)
         if state == 1:
             server.logger.info("伪装服务器收到了一次ping: %s" % recv_data)
             motd = {
@@ -146,10 +144,11 @@ class FakeServerSocket:
             return "connection_request"
         # 还有没有其他的可能？
         # 如果没有 推荐在这里加 assert
-        # assert False
+        assert False
 
-    def handle_pong(self, client_socket, recv_data, i, server: PluginServerInterface):
-        (long, i) = read_long(recv_data, i)
+    @staticmethod
+    def handle_pong(client_socket, recv_data, i, server: PluginServerInterface):
+        long, i = read_long(recv_data, i)
         response = bytearray()
         write_varint(response, 9)
         write_varint(response, 1)

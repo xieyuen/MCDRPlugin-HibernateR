@@ -15,7 +15,7 @@ def read_varint(byte, i):
 
 
 def read_utf(byte, i):
-    (length, i) = read_varint(byte, i)
+    length, i = read_varint(byte, i)
     ip = byte[i:(i + length)].decode('utf-8')
     i += length
     return ip, i

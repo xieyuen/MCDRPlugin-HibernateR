@@ -15,7 +15,7 @@ def read_varint(byte, i):
 
 
 def read_utf(byte, i):
-    (length, i) = read_varint(byte, i)
+    length, i = read_varint(byte, i)
     ip = byte[i:(i + length)].decode('utf-8')
     i += length
     return ip, i
@@ -46,6 +46,7 @@ def write_utf(byte, value):
     write_varint(byte, len(value))
     for b in value.encode():
         byte.append(b)
+
 
 def write_response(client_socket, response):
     response_array = bytearray()

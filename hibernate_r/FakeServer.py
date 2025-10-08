@@ -140,11 +140,9 @@ class FakeServerSocket:
             write_response(client_socket, json.dumps({"text": self.fs_kick_message}))
             self.stop(server)
             server.logger.info("启动服务器")
-            # server.start()
             return "connection_request"
-        # 还有没有其他的可能？
-        # 如果没有 推荐在这里加 assert
-        assert False
+        # for unknown state
+        return "unknown_state"
 
     @staticmethod
     def handle_pong(client_socket, recv_data, i, server: PluginServerInterface):
